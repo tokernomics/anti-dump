@@ -1,6 +1,6 @@
 pragma solidity ^0.6.2;
 
-import "./SafeMath.sol";
+import "../libraries/SafeMath.sol";
 
 // SPDX-License-Identifier: MIT License
 
