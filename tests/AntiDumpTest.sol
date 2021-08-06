@@ -1,6 +1,6 @@
 pragma solidity ^0.6.2;
 
-import "../contracts/AntiDump.sol";
+import "./AntiDump.sol";
 
 // SPDX-License-Identifier: MIT License
 
@@ -53,7 +53,7 @@ contract AntiDumpTest is AntiDump {
     }
 
     function _needsCooldown(address user) internal view returns (bool) {
-        (uint256 cooldownStage, ) = _getUserStage(user);
+        (uint256 cooldownStage, , , , ) = _getUserCooldownInfo(user);
         return cooldownStage != 0;
     }
 
@@ -100,15 +100,19 @@ contract AntiDumpTest is AntiDump {
         return _updateHolding(user, newHolding);
     }
 
-    function resetCooldown(address user, uint256 newMaxHolding) public {
-        _resetCooldown(user, newMaxHolding);
+    function setCooldown(
+        address user,
+        uint256 newCooldownStage,
+        uint256 newMaxHolding
+    ) public {
+        _setCooldown(user, newCooldownStage, newMaxHolding);
     }
 
     function performBuy(address user, uint256 amount) public returns (uint256) {
         // Update user holding with balance before this transaction's results
         if (_canResetCooldown(user)) {
             // Reset if we're out of cooldown
-            _resetCooldown(user, userHolding[user].add(amount));
+            _setCooldown(user, 0, userHolding[user].add(amount));
         }
 
         _updateHolding(user, userHolding[user].add(amount));
@@ -129,7 +133,7 @@ contract AntiDumpTest is AntiDump {
         // Update user holding with balance before this transaction's results
         if (_canResetCooldown(user)) {
             // Reset if we're out of cooldown
-            _resetCooldown(user, userHolding[user]);
+            _setCooldown(user, 0, userHolding[user]);
         }
 
         _updateHolding(user, userHolding[user].sub(amount));
