@@ -1,6 +1,6 @@
 pragma solidity ^0.6.2;
 
-import "../libraries/SafeMath.sol";
+import "./SafeMath.sol";
 
 // SPDX-License-Identifier: MIT License
 
@@ -14,12 +14,13 @@ import "../libraries/SafeMath.sol";
  *
  *
  * In the next versions I will work on a more gas efficient way of performing this.  If you have any suggestions please
- * leave them at the gist at https://github.com/tokernomics
+ * leave them at the repo at https://github.com/tokernomics
  *
  * First used in https://only1baby.com
  *
  * By: Tokernomics
  * Date: 2021-08-05
+ * Please do not delete this header
  */
 contract AntiDump {
     using SafeMath for uint256;
@@ -45,13 +46,21 @@ contract AntiDump {
         uint256 cooldownTime,
         uint256 cooldownStrike
     );
-    event ResetCooldown(address indexed user, uint256 maxHolding);
+    event SetCooldown(
+        address indexed user,
+        uint256 cooldownStage,
+        uint256 maxHolding
+    );
 
     constructor() public {}
 
-    function _resetCooldown(address user, uint256 newMaxHolding) internal {
-        emit ResetCooldown(user, newMaxHolding);
-        antiDumpTracker[user] = StageHolding(0, newMaxHolding);
+    function _setCooldown(
+        address user,
+        uint256 newCooldownStage,
+        uint256 newMaxHolding
+    ) internal {
+        emit SetCooldown(user, newCooldownStage, newMaxHolding);
+        antiDumpTracker[user] = StageHolding(newCooldownStage, newMaxHolding);
     }
 
     function _setCooldownStageInfo(
@@ -103,7 +112,7 @@ contract AntiDump {
                 if (newPercent < tempPercent) {
                     emit UpdateCooldownStage(user, i);
 
-                    // only check `<` so that `maxHolder == 0` doesn't get through
+                    // only check `<` so that `maxHolding == 0` doesn't get through
                     antiDumpTracker[user] = StageHolding(
                         i,
                         stageHolding.maxHolding
@@ -123,60 +132,34 @@ contract AntiDump {
         internal
         view
         returns (
+            uint256 cooldownStage,
+            uint256 maxHolding,
             uint256 percent,
             uint256 cooldownTime,
             uint256 cooldownStrike
         )
     {
         StageHolding memory stageHolding = antiDumpTracker[user];
-        uint256 userCooldownStage = stageHolding.cooldownStage;
-        percent = cooldownMapping[userCooldownStage][0];
-        cooldownTime = cooldownMapping[userCooldownStage][1];
-        cooldownStrike = cooldownMapping[userCooldownStage][2];
-    }
 
-    function _getUserStage(address user)
-        internal
-        view
-        returns (uint256 cooldownStage, uint256 maxHolding)
-    {
-        StageHolding memory stageHolding = antiDumpTracker[user];
         cooldownStage = stageHolding.cooldownStage;
         maxHolding = stageHolding.maxHolding;
+        percent = cooldownMapping[cooldownStage][0];
+        cooldownTime = cooldownMapping[cooldownStage][1];
+        cooldownStrike = cooldownMapping[cooldownStage][2];
     }
 
     function getUserCooldownInfo(address user)
         public
         view
         returns (
+            uint256 cooldownStage,
+            uint256 maxHolding,
             uint256 percent,
             uint256 cooldownTime,
             uint256 cooldownStrike
         )
     {
         return _getUserCooldownInfo(user);
-    }
-
-    function getUserStage(address user)
-        public
-        view
-        returns (uint256 cooldownStage, uint256 maxHolding)
-    {
-        return _getUserStage(user);
-    }
-
-    function getCooldownStageInfo(uint256 cooldownStage)
-        public
-        view
-        returns (
-            uint256 percent,
-            uint256 cooldownTime,
-            uint256 cooldownStrike
-        )
-    {
-        percent = cooldownMapping[cooldownStage][0];
-        cooldownTime = cooldownMapping[cooldownStage][1];
-        cooldownStrike = cooldownMapping[cooldownStage][2];
     }
 
     function getCooldownStageInfos()
