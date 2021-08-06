@@ -2,7 +2,7 @@
 
 pragma solidity ^0.6.2;
 
-import "../libraries/SafeMath.sol";
+import "./SafeMath.sol";
 import "./ERC20.sol";
 import "./Adminable.sol";
 import "./AntiDump.sol";
@@ -17,7 +17,7 @@ import "./AntiDump.sol";
  *
  *
  * In the next versions I will work on a more gas efficient way of performing this.  If you have any suggestions please
- * leave them at the gist at https://github.com/tokernomics
+ * leave them at the repo at https://github.com/tokernomics
  *
  * First used in https://only1baby.com
  *
@@ -27,7 +27,7 @@ import "./AntiDump.sol";
  *
  * By: Tokernomics
  * Date: 2021-08-05
- *
+ * Please do not delete this header
  */
 abstract contract AntiDumpPlugin is ERC20, Adminable, AntiDump {
     using SafeMath for uint256;
@@ -39,17 +39,11 @@ abstract contract AntiDumpPlugin is ERC20, Adminable, AntiDump {
 
     constructor() public {
         // Setup the AntiDump stages (stage, percent, time, strike as absolute percent)
-        // _setCooldownStageInfo(0,  0, 6 hours,    0);   // base 12%  (6 hour wait to allow reset max holdings)
-        // _setCooldownStageInfo(4, 75, 6 hours,  1300);   // base 12% + 13% = 25%
-        // _setCooldownStageInfo(3, 50, 3 days,   1800);   // base 12% + 18% = 30%
-        // _setCooldownStageInfo(2, 25, 1 week,   2300);   // base 12% + 23% = 35%
-        // _setCooldownStageInfo(1, 15, 1 week,   8300);   // base 12% + 83% = 95% (essentially can't sell below 15% without waiting)
-
-        _setCooldownStageInfo(0, 0, 20 minutes, 0); // base 12%  // for testing added a cooldown time to allow reset max holdings
-        _setCooldownStageInfo(4, 75, 20 minutes, 1300); // base 12% + 13% = 25%
-        _setCooldownStageInfo(3, 50, 30 minutes, 1800); // base 12% + 18% = 30%
-        _setCooldownStageInfo(2, 25, 40 minutes, 2300); // base 12% + 23% = 35%
-        _setCooldownStageInfo(1, 15, 50 minutes, 8300); // base 12% + 83% = 95%
+        _setCooldownStageInfo(0,  0, 6 hours,    0);   // base 12%  (6 hour wait to allow reset max holdings)
+        _setCooldownStageInfo(4, 75, 6 hours,   800); // base 12% +  8% = 20%
+        _setCooldownStageInfo(3, 50, 3 days,   1300); // base 12% + 13% = 25%
+        _setCooldownStageInfo(2, 25, 1 weeks,   2800); // base 12% + 28% = 30%
+        _setCooldownStageInfo(1, 15, 1 weeks,   8300); // base 12% + 83% = 95% (essentially can't sell below 15% without waiting)
     }
 
     // This is the main function that needs to be called to apply the cooldown logic
@@ -64,7 +58,7 @@ abstract contract AntiDumpPlugin is ERC20, Adminable, AntiDump {
         // Update user holding with balance before this transaction's results
         if (_canResetCooldown(user)) {
             // Reset if we're out of the cooldown period
-            _resetCooldown(user, IERC20(this).balanceOf(user));
+            _setCooldown(user, 0, IERC20(this).balanceOf(user));
         }
 
         uint256 newBalance;
@@ -83,38 +77,24 @@ abstract contract AntiDumpPlugin is ERC20, Adminable, AntiDump {
     function _canResetCooldown(address user) internal view returns (bool) {
         uint256 fromLastSold = lastSold[user];
         if (fromLastSold == 0) return false;
-        (, uint256 cooldownTime, ) = _getUserCooldownInfo(user);
+        (, , , uint256 cooldownTime, ) = _getUserCooldownInfo(user);
         return block.timestamp.sub(fromLastSold) > cooldownTime;
-    }
-
-    function canResetCooldown(address user) external view returns (bool) {
-        return _canResetCooldown(user);
     }
 
     // isInCooldown is for users that have entered cooldown and are still in cooldown
     function _isInCooldown(address user) internal view returns (bool) {
         uint256 fromLastSold = lastSold[user];
         if (fromLastSold == 0) return false;
-        (, uint256 cooldownTime, ) = _getUserCooldownInfo(user);
+        (, , , uint256 cooldownTime, ) = _getUserCooldownInfo(user);
         return
             _hasEnteredCooldown(user) &&
             block.timestamp.sub(fromLastSold) <= cooldownTime;
     }
 
-    // isInCooldown is for users that have entered cooldown and are still in cooldown
-    function isInCooldown(address user) external view returns (bool) {
-        return _isInCooldown(user);
-    }
-
     // hasEnteredCooldown is for users that have entered cooldown (but may or may not still be there)
     function _hasEnteredCooldown(address user) internal view returns (bool) {
-        (uint256 cooldownStage, ) = _getUserStage(user);
+        (uint256 cooldownStage, , , , ) = _getUserCooldownInfo(user);
         return cooldownStage != 0;
-    }
-
-    // hasEnteredCooldown is for users that have entered cooldown (but may or may not still be there)
-    function hasEnteredCooldown(address user) external view returns (bool) {
-        return _hasEnteredCooldown(user);
     }
 
     function _getCooldownFee(address user)
@@ -122,11 +102,7 @@ abstract contract AntiDumpPlugin is ERC20, Adminable, AntiDump {
         view
         returns (uint256 cooldownStrike)
     {
-        (, , cooldownStrike) = _getUserCooldownInfo(user);
-    }
-
-    function getCooldownFee(address user) external view returns (uint256) {
-        return _getCooldownFee(user);
+        (, , , , cooldownStrike) = _getUserCooldownInfo(user);
     }
 
     function setCooldownStageInfos(
@@ -149,13 +125,33 @@ abstract contract AntiDumpPlugin is ERC20, Adminable, AntiDump {
         );
     }
 
-    function resetCooldownAndMaxHolding(address user, uint256 newMaxHolding)
+    function setCooldownAndMaxHolding(
+        address user,
+        uint256 newCooldownStage,
+        uint256 newMaxHolding
+    )
         external
         onlyAdmin(1)
         returns (uint256 cooldownTime, uint256 cooldownStrike)
     {
-        _resetCooldown(user, newMaxHolding);
-        cooldownTime = cooldownMapping[0][1];
-        cooldownStrike = cooldownMapping[0][2];
+        _setCooldown(user, newCooldownStage, newMaxHolding);
+        cooldownTime = cooldownMapping[newCooldownStage][1];
+        cooldownStrike = cooldownMapping[newCooldownStage][2];
+    }
+
+    function getCooldownState(address user)
+        external
+        view
+        returns (
+            bool hasEnteredCooldown,
+            bool isInCooldown,
+            bool canResetCooldown,
+            uint256 cooldownFee
+        )
+    {
+        hasEnteredCooldown = _hasEnteredCooldown(user);
+        isInCooldown = _isInCooldown(user);
+        canResetCooldown = _canResetCooldown(user);
+        cooldownFee = _getCooldownFee(user);
     }
 }
