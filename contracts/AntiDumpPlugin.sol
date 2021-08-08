@@ -2,7 +2,7 @@
 
 pragma solidity ^0.6.2;
 
-import "./SafeMath.sol";
+import "../libraries/SafeMath.sol";
 import "./ERC20.sol";
 import "./Adminable.sol";
 import "./AntiDump.sol";
